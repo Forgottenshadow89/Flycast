@@ -387,8 +387,19 @@ void gui_settings_video()
 
     	OptionCheckbox(T("Show FPS Counter"), config::ShowFPS, T("Show on-screen frame/sec counter"));
     }
-#ifdef VIDEO_ROUTING
 	ImGui::Spacing();
+    header(T("Texture Upscaling"));
+    {
+#ifdef _OPENMP
+    	OptionArrowButtons(T("Texture Upscaling"), config::TextureUpscale, 1, 8,
+    			T("Upscale textures with the xBRZ algorithm. Only on fast platforms and for certain 2D games"), "x%d");
+    	OptionSlider(T("Texture Max Size"), config::MaxFilteredTextureSize, 8, 1024,
+    			T("Textures larger than this dimension squared will not be upscaled"));
+    	OptionArrowButtons(T("Max Threads"), config::MaxThreads, 1, 8,
+    			T("Maximum number of threads to use for texture upscaling. Recommended: number of physical cores minus one"));
+#endif
+    }
+#ifdef VIDEO_ROUTING
 #ifdef __APPLE__
 	header(T("Video Routing (Syphon)"));
 #elif defined(_WIN32)
