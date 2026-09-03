@@ -1,0 +1,2 @@
+sync-upstream.sh text eol=lf
+sync-upstream.cmd text eol=crlf
