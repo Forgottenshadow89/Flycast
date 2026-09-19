@@ -89,6 +89,7 @@ option(USE_HOST_SDL "Use host SDL library" ${USE_HOST_SDL_DEFAULT})
 option(USE_HOST_LIBCHDR "Use host libchdr" OFF)
 option(USE_OPENMP "Use OpenMP if available" ON)
 option(USE_VULKAN "Build with Vulkan support" ON)
+set(MOLTENVK_DYLIB "" CACHE FILEPATH "Path to macOS MoltenVK dylib for macOS Vulkan builds")
 option(USE_DX9 "Build with Direct3D 9 support" ON)
 option(USE_DX11 "Build with Direct3D 11 support" ON)
 option(LIBRETRO "Build libretro core" OFF)
@@ -219,6 +220,9 @@ elseif(LIBRETRO)
 	endif()
 	if(ANDROID OR USE_GLES)
 		target_compile_definitions(${PROJECT_NAME} PRIVATE GLES GLES3 HAVE_OPENGLES HAVE_OPENGLES3 HAVE_OIT)
+		if(ANDROID)
+			target_link_libraries(${PROJECT_NAME} PRIVATE android)
+		endif()
     elseif(IOS)
 		target_compile_definitions(${PROJECT_NAME} PRIVATE GLES GLES3 HAVE_OPENGLES HAVE_OPENGLES3)
 		find_library(OPENGLES OpenGLES)
@@ -1416,9 +1420,15 @@ if(NOT LIBRETRO)
 				${IOSURFACE_LIBRARY}
 				${MULTITOUCH_SUPPORT_LIBRARY})
 
-			add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
-				COMMAND ${CMAKE_COMMAND} -E copy "$ENV{VULKAN_SDK}/lib/libMoltenVK.dylib"
-				$<TARGET_FILE_DIR:flycast>/../Frameworks/libvulkan.dylib)
+			if(USE_VULKAN)
+				set(MOLTENVK_DYLIB_PATH "${MOLTENVK_DYLIB}")
+				if(NOT MOLTENVK_DYLIB_PATH OR NOT EXISTS "${MOLTENVK_DYLIB_PATH}")
+					message(FATAL_ERROR "A macOS MoltenVK dylib is required for macOS Vulkan builds. Run shell/apple/generate_xcode_project.command to download the configured MoltenVK release, or pass -DMOLTENVK_DYLIB=/path/to/libMoltenVK.dylib.")
+				endif()
+				add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+					COMMAND ${CMAKE_COMMAND} -E copy "${MOLTENVK_DYLIB_PATH}"
+					$<TARGET_FILE_DIR:flycast>/../Frameworks/libMoltenVK.dylib)
+			endif()
 		endif()
 	elseif(UNIX)
 		if(NOT BUILD_TESTING)
@@ -1478,16 +1488,33 @@ endif()
 
 if(NINTENDO_SWITCH)
 	if(LIBRETRO)
+		# ar names a member after the basename of the object, so extracting every
+		# archive into one directory loses whatever two of them happen to share:
+		# zstd carries its own copy of xxhash.c, whose object lands on top of the
+		# real xxHash one and takes XXH32 with it. A directory per archive keeps
+		# them apart.
 		add_custom_target(combined ALL
-			COMMAND ${CMAKE_AR} -x $<TARGET_FILE:xxHash::xxhash>
-			COMMAND ${CMAKE_AR} -x $<TARGET_FILE:chdr-static>
-			COMMAND ${CMAKE_AR} -x $<TARGET_FILE:zip>
-			COMMAND ${CMAKE_AR} -x $<TARGET_FILE:libzstd_static>
-			COMMAND ${CMAKE_AR} -x $<TARGET_FILE:elf>
-			COMMAND ${CMAKE_AR} -x $<TARGET_FILE:tinygettext::tinygettext>
-			COMMAND ${CMAKE_AR} -x $<TARGET_FILE:flycast::res>
-			COMMAND ${CMAKE_AR} -rs flycast_libretro_libnx.a *.o
-			COMMAND rm *.o
+			COMMAND ${CMAKE_COMMAND} -E rm -rf combined-objs
+			COMMAND ${CMAKE_COMMAND} -E make_directory
+				combined-objs/xxhash combined-objs/chdr combined-objs/zip
+				combined-objs/zstd combined-objs/elf combined-objs/tinygettext
+				combined-objs/res
+			COMMAND ${CMAKE_COMMAND} -E chdir combined-objs/xxhash
+				${CMAKE_AR} -x $<TARGET_FILE:xxHash::xxhash>
+			COMMAND ${CMAKE_COMMAND} -E chdir combined-objs/chdr
+				${CMAKE_AR} -x $<TARGET_FILE:chdr-static>
+			COMMAND ${CMAKE_COMMAND} -E chdir combined-objs/zip
+				${CMAKE_AR} -x $<TARGET_FILE:zip>
+			COMMAND ${CMAKE_COMMAND} -E chdir combined-objs/zstd
+				${CMAKE_AR} -x $<TARGET_FILE:libzstd_static>
+			COMMAND ${CMAKE_COMMAND} -E chdir combined-objs/elf
+				${CMAKE_AR} -x $<TARGET_FILE:elf>
+			COMMAND ${CMAKE_COMMAND} -E chdir combined-objs/tinygettext
+				${CMAKE_AR} -x $<TARGET_FILE:tinygettext::tinygettext>
+			COMMAND ${CMAKE_COMMAND} -E chdir combined-objs/res
+				${CMAKE_AR} -x $<TARGET_FILE:flycast::res>
+			COMMAND ${CMAKE_AR} -rs flycast_libretro_libnx.a combined-objs/*/*.o
+			COMMAND ${CMAKE_COMMAND} -E rm -rf combined-objs
 			WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/${CMAKE_ARCHIVE_OUTPUT_DIRECTORY}
 			DEPENDS xxHash::xxhash chdr-static zip libzstd_static
 				tinygettext::tinygettext ${PROJECT_NAME})

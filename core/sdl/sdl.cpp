@@ -571,6 +571,7 @@ void input_sdl_handle()
 
 			case SDL_DROPFILE:
 				gui_start_game(event.drop.file);
+				SDL_free(event.drop.file);
 				break;
 
 			// Switch touchscreen support
@@ -962,7 +963,7 @@ void sdl_window_create()
 			die("error initializing SDL Video subsystem");
 		}
 #if defined(__APPLE__) && defined(USE_VULKAN)
-		SDL_Vulkan_LoadLibrary("libvulkan.dylib");
+		SDL_Vulkan_LoadLibrary("@executable_path/../Frameworks/libMoltenVK.dylib");
 #endif
 	}
 	sdlDeInit.initialized = true;
